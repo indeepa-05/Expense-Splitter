@@ -28,3 +28,6 @@ and optimality tests.
 Task 8 used AI assistance to implement the Jinja2 frontend, CSS styling,
 JavaScript API integration, Equal/Percentage UI switch, expense editing UI,
 balance rendering, and settlement rendering.
+
+Task 10 used AI assistance for README finalization, the Python startup launcher,
+the Windows batch launcher, project cleanup, and submission-readiness review.
