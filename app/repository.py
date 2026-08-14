@@ -11,6 +11,10 @@ class DuplicatePersonError(ValueError):
     """Raised when a person with the same normalized name already exists."""
 
 
+class PersonNotFoundError(LookupError):
+    """Raised when a person ID is not present in the repository."""
+
+
 class PeopleRepository:
     """Store people in insertion order for the lifetime of the application."""
 
@@ -33,6 +37,19 @@ class PeopleRepository:
 
     def list_all(self) -> list[Person]:
         return list(self._people)
+
+    def get(self, person_id: int) -> Person:
+        for person in self._people:
+            if person.id == person_id:
+                return person
+        raise PersonNotFoundError(f"Person {person_id} does not exist")
+
+    def delete(self, person_id: int) -> None:
+        for position, person in enumerate(self._people):
+            if person.id == person_id:
+                del self._people[position]
+                return
+        raise PersonNotFoundError(f"Person {person_id} does not exist")
 
     def exists(self, person_id: int) -> bool:
         return any(person.id == person_id for person in self._people)

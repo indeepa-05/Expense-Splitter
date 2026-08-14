@@ -1,6 +1,11 @@
 """FastAPI entry point for the Expense Splitter application."""
 
-from fastapi import FastAPI, HTTPException, status
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.models import (
     BalanceResponse,
@@ -14,6 +19,7 @@ from app.repository import (
     DuplicatePersonError,
     ExpenseNotFoundError,
     InvalidPersonNameError,
+    PersonNotFoundError,
     expense_repository,
     people_repository,
 )
@@ -30,12 +36,22 @@ from app.services.settlement import build_settlement_responses
 
 
 app = FastAPI(title="Expense Splitter")
+app_directory = Path(__file__).resolve().parent
+app.mount(
+    "/static",
+    StaticFiles(directory=str(app_directory / "static")),
+    name="static",
+)
+templates = Jinja2Templates(directory=str(app_directory / "templates"))
 
 
-@app.get("/")
-def read_root() -> dict[str, str]:
-    """Identify the application."""
-    return {"name": "Expense Splitter"}
+@app.get("/", response_class=HTMLResponse)
+def read_root(request: Request) -> HTMLResponse:
+    """Serve the Expense Splitter browser interface."""
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+    )
 
 
 @app.get("/api/health")
@@ -60,6 +76,40 @@ def add_person(person_data: PersonCreate) -> Person:
 def list_people() -> list[Person]:
     """Return people in the order they were added."""
     return people_repository.list_all()
+
+
+@app.delete(
+    "/api/people/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_person(person_id: int) -> None:
+    """Remove a person only when no stored expense references them."""
+    try:
+        person = people_repository.get(person_id)
+    except PersonNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    is_referenced = any(
+        expense.payer_id == person_id or person_id in expense.participant_ids
+        for expense in expense_repository.list_all()
+    )
+    if is_referenced:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot remove {person.name} because they are used in existing "
+                "expenses. Edit or delete those expenses first."
+            ),
+        )
+
+    people_repository.delete(person_id)
+
+
+@app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)
+def reset_session() -> None:
+    """Clear all in-memory data and restart repository ID counters."""
+    expense_repository.reset()
+    people_repository.reset()
 
 
 @app.post(

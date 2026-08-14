@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Split group expenses exactly and settle up with fewer payments.">
+    <title>Expense Splitter</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <header class="hero">
+      <div class="container hero-content">
+        <div>
+          <p class="eyebrow">Shared costs, clear outcomes</p>
+          <h1>Expense Splitter</h1>
+          <p class="hero-copy">Track who paid, split every cent exactly, and see the simplest way to settle up.</p>
+        </div>
+        <button id="new-session" class="new-session-button" type="button">Start New Session</button>
+      </div>
+    </header>
+
+    <main class="container page-grid">
+      <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+
+      <section id="people-section" class="card people-section" aria-labelledby="people-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Group setup</p>
+            <h2 id="people-heading">People</h2>
+          </div>
+          <span id="people-count" class="count-badge">0 people</span>
+        </div>
+        <form id="person-form" class="inline-form">
+          <label class="sr-only" for="person-name">Person name</label>
+          <input id="person-name" name="name" type="text" maxlength="100" placeholder="Person name" autocomplete="off" required>
+          <button type="submit">Add Person</button>
+        </form>
+        <div id="people-list" class="people-list"></div>
+      </section>
+
+      <section id="expense-form-section" class="card expense-form-card" aria-labelledby="expense-form-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Record a shared cost</p>
+            <h2 id="expense-form-heading">Add Expense</h2>
+          </div>
+          <span id="edit-badge" class="edit-badge" hidden>Editing</span>
+        </div>
+
+        <form id="expense-form">
+          <div class="form-grid">
+            <label>
+              <span>Description</span>
+              <input id="expense-description" type="text" placeholder="Dinner, hotel, transport…">
+            </label>
+            <label>
+              <span>Amount (Rs.)</span>
+              <input id="expense-amount" type="text" inputmode="decimal" placeholder="12000.00" required>
+            </label>
+            <label class="full-width">
+              <span>Paid by</span>
+              <select id="expense-payer" required></select>
+            </label>
+          </div>
+
+          <fieldset class="split-fieldset">
+            <legend>Split type</legend>
+            <div class="mode-switch" role="radiogroup" aria-label="Split type">
+              <label>
+                <input type="radio" name="split-type" value="equal" checked>
+                <span>Equal Split</span>
+              </label>
+              <label>
+                <input type="radio" name="split-type" value="percentage">
+                <span>Percentage Split</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="participants-panel">
+            <div class="participants-heading">
+              <h3>Participants</h3>
+              <label id="equal-select-all-control" class="select-all-control">
+                <input id="equal-select-all" type="checkbox">
+                <span>Select All</span>
+              </label>
+              <label id="percentage-select-all-control" class="select-all-control" hidden>
+                <input id="percentage-select-all" type="checkbox">
+                <span>Select All</span>
+              </label>
+            </div>
+            <div id="equal-participants" class="participant-list"></div>
+            <div id="percentage-participants" class="participant-list" hidden></div>
+            <div id="percentage-summary" class="percentage-summary" aria-live="polite" hidden>
+              <span id="percentage-total">Total: 0.00%</span>
+              <span id="percentage-remaining">Remaining: 100.00%</span>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="expense-submit" type="submit">Add Expense</button>
+            <button id="cancel-edit" class="button-secondary" type="button" hidden>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="expenses-section" class="card wide-card" aria-labelledby="expenses-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Recorded activity</p>
+            <h2 id="expenses-heading">Expenses</h2>
+          </div>
+        </div>
+        <div id="expenses-list" class="expenses-list"></div>
+      </section>
+
+      <section id="balances-section" class="card" aria-labelledby="balances-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Current position</p>
+            <h2 id="balances-heading">Balances</h2>
+          </div>
+        </div>
+        <div id="balances-list" class="stack-list"></div>
+      </section>
+
+      <section id="settlements-section" class="card" aria-labelledby="settlements-heading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Minimum payments</p>
+            <h2 id="settlements-heading">Settle Up</h2>
+          </div>
+        </div>
+        <div id="settlements-list" class="stack-list"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
+  </body>
+</html>

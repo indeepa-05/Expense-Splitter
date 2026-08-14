@@ -24,3 +24,7 @@ sanity-check balance test.
 Task 7 used AI assistance to implement the optimal settlement algorithm,
 DFS/backtracking search, pruning, deterministic tie-breaking, settlement API,
 and optimality tests.
+
+Task 8 used AI assistance to implement the Jinja2 frontend, CSS styling,
+JavaScript API integration, Equal/Percentage UI switch, expense editing UI,
+balance rendering, and settlement rendering.
