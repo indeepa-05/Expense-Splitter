@@ -2,11 +2,20 @@
 
 from fastapi import FastAPI, HTTPException, status
 
-from app.models import Person, PersonCreate
+from app.models import Expense, ExpenseRequest, Person, PersonCreate
 from app.repository import (
     DuplicatePersonError,
+    ExpenseNotFoundError,
     InvalidPersonNameError,
     people_repository,
+)
+from app.services.expenses import (
+    ExpenseValidationError,
+    create_expense,
+    delete_expense,
+    get_expense,
+    list_expenses,
+    update_expense,
 )
 
 
@@ -41,3 +50,50 @@ def add_person(person_data: PersonCreate) -> Person:
 def list_people() -> list[Person]:
     """Return people in the order they were added."""
     return people_repository.list_all()
+
+
+@app.post(
+    "/api/expenses",
+    response_model=Expense,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_expense(expense_data: ExpenseRequest) -> Expense:
+    """Create an expense after validating and calculating its shares."""
+    try:
+        return create_expense(expense_data)
+    except ExpenseValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/api/expenses", response_model=list[Expense])
+def read_expenses() -> list[Expense]:
+    return list_expenses()
+
+
+@app.get("/api/expenses/{expense_id}", response_model=Expense)
+def read_expense(expense_id: int) -> Expense:
+    try:
+        return get_expense(expense_id)
+    except ExpenseNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.put("/api/expenses/{expense_id}", response_model=Expense)
+def replace_expense(expense_id: int, expense_data: ExpenseRequest) -> Expense:
+    try:
+        return update_expense(expense_id, expense_data)
+    except ExpenseNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ExpenseValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.delete(
+    "/api/expenses/{expense_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_expense(expense_id: int) -> None:
+    try:
+        delete_expense(expense_id)
+    except ExpenseNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error

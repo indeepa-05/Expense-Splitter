@@ -1,6 +1,6 @@
 """In-memory persistence for people."""
 
-from app.models import Person
+from app.models import Expense, ExpenseDetails, Person
 
 
 class InvalidPersonNameError(ValueError):
@@ -34,6 +34,9 @@ class PeopleRepository:
     def list_all(self) -> list[Person]:
         return list(self._people)
 
+    def exists(self, person_id: int) -> bool:
+        return any(person.id == person_id for person in self._people)
+
     def reset(self) -> None:
         """Clear all people and restart IDs, primarily for test isolation."""
         self._people: list[Person] = []
@@ -41,3 +44,67 @@ class PeopleRepository:
 
 
 people_repository = PeopleRepository()
+
+
+class ExpenseNotFoundError(LookupError):
+    """Raised when an expense ID is not present in the repository."""
+
+
+class ExpenseRepository:
+    """Store expenses in insertion order for the application lifetime."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def add(self, details: ExpenseDetails) -> Expense:
+        expense = self._to_expense(self._next_id, details)
+        self._expenses.append(expense)
+        self._next_id += 1
+        return expense
+
+    def list_all(self) -> list[Expense]:
+        return list(self._expenses)
+
+    def get(self, expense_id: int) -> Expense:
+        for expense in self._expenses:
+            if expense.id == expense_id:
+                return expense
+        raise ExpenseNotFoundError(f"Expense {expense_id} does not exist")
+
+    def update(self, expense_id: int, details: ExpenseDetails) -> Expense:
+        for position, expense in enumerate(self._expenses):
+            if expense.id == expense_id:
+                updated_expense = self._to_expense(expense_id, details)
+                self._expenses[position] = updated_expense
+                return updated_expense
+        raise ExpenseNotFoundError(f"Expense {expense_id} does not exist")
+
+    def delete(self, expense_id: int) -> None:
+        for position, expense in enumerate(self._expenses):
+            if expense.id == expense_id:
+                del self._expenses[position]
+                return
+        raise ExpenseNotFoundError(f"Expense {expense_id} does not exist")
+
+    def reset(self) -> None:
+        """Clear expenses and restart IDs, primarily for test isolation."""
+        self._expenses: list[Expense] = []
+        self._next_id = 1
+
+    @staticmethod
+    def _to_expense(expense_id: int, details: ExpenseDetails) -> Expense:
+        return Expense(
+            id=expense_id,
+            description=details.description,
+            amount_cents=details.amount_cents,
+            payer_id=details.payer_id,
+            participant_ids=list(details.participant_ids),
+            split_type=details.split_type,
+            shares=dict(details.shares),
+            percentages=(
+                dict(details.percentages) if details.percentages is not None else None
+            ),
+        )
+
+
+expense_repository = ExpenseRepository()

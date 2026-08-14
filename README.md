@@ -10,6 +10,8 @@ A minimal FastAPI foundation for an Expense Splitter application.
 - Safe monetary calculations using integer cents instead of binary floating point
 - Exact equal splits with deterministic remainder distribution
 - Exact percentage splits using Decimal percentages and largest remainders
+- Create, list, retrieve, edit, and delete expenses through the API
+- Equal and percentage expense modes backed by the tested split services
 
 For example, splitting Rs. 100.00 among three people produces Rs. 33.34,
 Rs. 33.33, and Rs. 33.33 in participant order. The integer-cent shares still
@@ -19,6 +21,10 @@ Percentage splits must total exactly 100%. Fractional-cent results are floored,
 then remaining cents are assigned by largest fractional remainder with participant
 order breaking ties. For example, one cent split 50%/50% goes to the first
 participant while the second receives zero cents, preserving the one-cent total.
+
+Expense and people data remain in memory for the current application session.
+Expense endpoints are available at `/api/expenses`; running balances and
+settlements are not implemented yet.
 
 ## Run
 
