@@ -20,3 +20,7 @@ Percentage split services, and expense CRUD tests.
 Task 6 used AI assistance to implement the running balance service, zero-sum
 accounting, balance API, edit/delete recalculation tests, and the assignment
 sanity-check balance test.
+
+Task 7 used AI assistance to implement the optimal settlement algorithm,
+DFS/backtracking search, pruning, deterministic tie-breaking, settlement API,
+and optimality tests.

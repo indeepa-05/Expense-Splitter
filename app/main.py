@@ -2,7 +2,14 @@
 
 from fastapi import FastAPI, HTTPException, status
 
-from app.models import BalanceResponse, Expense, ExpenseRequest, Person, PersonCreate
+from app.models import (
+    BalanceResponse,
+    Expense,
+    ExpenseRequest,
+    Person,
+    PersonCreate,
+    SettlementResponse,
+)
 from app.repository import (
     DuplicatePersonError,
     ExpenseNotFoundError,
@@ -19,6 +26,7 @@ from app.services.expenses import (
     list_expenses,
     update_expense,
 )
+from app.services.settlement import build_settlement_responses
 
 
 app = FastAPI(title="Expense Splitter")
@@ -105,6 +113,15 @@ def remove_expense(expense_id: int) -> None:
 def read_balances() -> list[BalanceResponse]:
     """Return current net balances derived from all stored expenses."""
     return build_balance_responses(
+        people_repository.list_all(),
+        expense_repository.list_all(),
+    )
+
+
+@app.get("/api/settlements", response_model=list[SettlementResponse])
+def read_settlements() -> list[SettlementResponse]:
+    """Return an optimal payment plan derived from current balances."""
+    return build_settlement_responses(
         people_repository.list_all(),
         expense_repository.list_all(),
     )

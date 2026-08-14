@@ -70,3 +70,19 @@ class BalanceResponse(BaseModel):
     balance_cents: int
     balance: str
     status: BalanceStatus
+
+
+class SettlementTransaction(BaseModel):
+    """An exact payment from a debtor to a creditor."""
+
+    from_person_id: int
+    to_person_id: int
+    amount_cents: int
+
+
+class SettlementResponse(SettlementTransaction):
+    """A settlement transaction enriched for API display."""
+
+    from_name: str
+    to_name: str
+    amount: str
