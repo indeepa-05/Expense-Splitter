@@ -1,0 +1,1435 @@
+================================================================
+EXPENSE SPLITTER - TECHNICAL PROJECT DOCUMENTATION
+================================================================
+
+Document type: Plain-text technical project report
+Application currency: Sri Lankan Rupees (LKR)
+Application scope: Single-session group expense management
+
+
+================================================================
+1. PROJECT DESCRIPTION
+================================================================
+
+1.1 Purpose
+-----------
+
+Expense Splitter is a single-session web application for groups that share
+expenses. In a trip, event, household, or other group activity, different
+people may pay for meals, accommodation, transport, activities, and other
+items. The person who pays is not necessarily the only person who benefited,
+and different expenses may involve different subsets of the group.
+
+The application records those facts and determines:
+
+- each person's exact share of every expense;
+- each person's final net balance;
+- who owes money;
+- who should receive money; and
+- how the group can settle all balances using the minimum number of payment
+  transactions.
+
+All amounts are handled in Sri Lankan Rupees (LKR). Two allocation methods are
+implemented: Equal Split and Percentage Split. Financial correctness and
+rounding accuracy are major design priorities. Canonical money values are
+integer cents, percentage arithmetic uses Decimal, and allocation algorithms
+preserve every cent of the original expense.
+
+1.2 Scope
+---------
+
+The application provides a browser user interface backed by a FastAPI API and
+an in-memory repository. It supports people management, complete expense CRUD
+(create, read, update, and delete), derived balances, exact optimal settlement,
+and a full session reset. It intentionally has no login, account system,
+persistent database, currency conversion, or real payment processing.
+
+
+================================================================
+2. PROBLEM STATEMENT
+================================================================
+
+When several people share costs, different people often pay different amounts.
+A simple list of receipts does not reveal the final obligations. Manual
+calculation becomes difficult when:
+
+- each expense has a different set of participants;
+- the payer is not part of the split;
+- an expense is corrected or deleted later;
+- an equal division leaves remainder cents;
+- percentages produce fractional-cent results; and
+- several individual debts can be consolidated into fewer final payments.
+
+Using ordinary floating-point arithmetic can also introduce tiny numerical
+errors. Rounding every person's share independently can lose or create cents,
+causing the group total not to balance. A basic debtor-to-creditor greedy
+settlement can clear all balances but may use more transactions than necessary.
+
+Expense Splitter addresses these problems by validating every submitted
+expense, calculating exact integer-cent shares, deriving all balances from the
+current expense records, and applying an exact search for a globally minimum
+transaction settlement. Editing or deleting an expense changes the source data;
+the next balance and settlement request is therefore calculated from the new
+truth rather than from stale cached totals.
+
+
+================================================================
+3. PROJECT OBJECTIVES
+================================================================
+
+The project objectives are to:
+
+1. provide a simple way to record shared group expenses;
+2. support both Equal and Percentage splitting;
+3. maintain mathematically exact financial totals in LKR cents;
+4. validate people, money, percentages, and references at the backend;
+5. allow expenses to be viewed, edited, and deleted safely;
+6. calculate each person's running net position automatically;
+7. generate a globally minimum-transaction settlement plan;
+8. provide a clear browser interface without requiring a frontend framework;
+9. maintain a clean, layered, and testable Python architecture; and
+10. verify behavior with unit, API, integration, regression, invariant, and
+    frontend smoke tests.
+
+
+================================================================
+4. FUNCTIONAL REQUIREMENTS
+================================================================
+
+4.1 People
+----------
+
+Users can add people, view them in insertion order, and remove people who are
+not referenced by an expense. Names are trimmed and cannot be blank. Duplicate
+names are rejected case-insensitively.
+
+4.2 Expenses
+------------
+
+Users can create, list, retrieve, edit, and delete expenses. Each expense has a
+description, amount, payer, split type, participant set, and calculated shares.
+An edit fully replaces the financial configuration while preserving the
+expense ID. A deletion removes that expense from every later calculation.
+
+4.3 Splitting
+------------
+
+Equal Split divides cents as evenly as possible and assigns any remainder in a
+stable order. Percentage Split accepts positive percentages with no more than
+two decimal places, requires an exact 100% total, and uses the Largest
+Remainder Method to resolve fractional cents.
+
+4.4 Balances and Settlement
+---------------------------
+
+The application calculates each person's running net position across all
+expenses. Positive means the person should receive money, negative means the
+person owes money, and zero means settled. Settle Up returns a globally minimum
+number of debtor-to-creditor payment instructions.
+
+4.5 Session
+-----------
+
+Start New Session clears the current in-memory people and expenses and resets
+both ID counters. Balances and settlements then become empty because they are
+derived from the cleared records. The application has no accounts or login and
+serves one current session.
+
+
+================================================================
+5. ADDITIONAL FEATURES IMPLEMENTED
+================================================================
+
+The final application also includes:
+
+- Select All controls for both participant modes;
+- a visible Equal/Percentage mode switch;
+- a live percentage Total display;
+- a Remaining percentage indicator when the total is below 100%;
+- an Over by indicator and warning styling when the total exceeds 100%;
+- client-side display normalization such as 12000 -> 12000.00;
+- removal of unused people;
+- prevention of deleting people referenced as payer or participant;
+- Edit, Save Changes, Cancel, and confirmed Delete workflows;
+- confirmed Start New Session behavior;
+- run.py, which starts Uvicorn and attempts to open the browser;
+- start_app.bat, which uses the project's Windows virtual environment; and
+- a comprehensive automated test suite.
+
+
+================================================================
+6. TECHNOLOGY STACK
+================================================================
+
+Backend and application:
+
+- Python 3.11+
+- FastAPI
+- Pydantic
+- Uvicorn
+- Jinja2
+
+Frontend:
+
+- HTML
+- CSS
+- Vanilla JavaScript
+
+Quality and workflow:
+
+- pytest
+- HTTPX/FastAPI TestClient
+- Git
+- GitHub
+
+Persistence:
+
+- In-memory repositories for people and expenses
+
+This stack is suitable because FastAPI provides concise routing, typed request
+validation, response models, and straightforward testing. Pydantic defines the
+API data contracts. Jinja2 serves the application shell, while plain HTML, CSS,
+and JavaScript keep the frontend dependency-light. Decimal and integer
+arithmetic provide financial precision. pytest and TestClient support fast
+tests at both service and HTTP levels. In-memory persistence keeps the project
+focused on the assignment's financial and settlement logic while repository
+boundaries leave room for a future database.
+
+
+================================================================
+7. SYSTEM ARCHITECTURE
+================================================================
+
+7.1 Layered View
+----------------
+
+Browser User Interface
+        |
+        v
+FastAPI Route / API Layer
+        |
+        v
+Business Service Layer
+        |
+        v
+In-Memory Repository Layer
+
+7.2 Browser User Interface
+--------------------------
+
+index.html defines the page structure, styles.css supplies responsive visual
+presentation, and app.js manages client-side interaction. The frontend gathers
+input, switches split modes, maintains selection state, shows percentage
+feedback, calls API endpoints with fetch, and renders people, expenses,
+balances, and settlement instructions. It is not the authoritative financial
+calculation layer.
+
+7.3 FastAPI Route / API Layer
+-----------------------------
+
+app/main.py serves the Jinja page and static assets, exposes the JSON API,
+connects requests to repository or service operations, declares response
+models, and translates expected domain errors into HTTP 400, 404, or 409
+responses. FastAPI/Pydantic also reject structurally invalid request bodies.
+
+7.4 Business Service Layer
+--------------------------
+
+The services have focused responsibilities:
+
+- money.py parses and formats money;
+- splits.py implements Equal and Percentage allocation;
+- expenses.py validates and orchestrates expense CRUD;
+- balances.py derives and validates zero-sum balances; and
+- settlement.py finds and formats an optimal settlement plan.
+
+7.5 Repository Layer
+--------------------
+
+PeopleRepository and ExpenseRepository retain records in insertion order for
+the process lifetime. They assign monotonic integer IDs, return defensive list
+copies, preserve expense IDs on update, and reset storage and counters only
+when a new session begins.
+
+This separation improves maintainability because UI, routing, financial logic,
+and persistence can change independently. It improves testability because
+algorithms can be tested directly while API workflows can be tested through
+TestClient with reset repositories.
+
+
+================================================================
+8. PROJECT STRUCTURE
+================================================================
+
+Tortil_mini_project/
+|
+|-- app/
+|   |-- __init__.py
+|   |-- main.py
+|   |-- models.py
+|   |-- repository.py
+|   |
+|   |-- services/
+|   |   |-- __init__.py
+|   |   |-- money.py
+|   |   |-- splits.py
+|   |   |-- expenses.py
+|   |   |-- balances.py
+|   |   `-- settlement.py
+|   |
+|   |-- templates/
+|   |   `-- index.html
+|   |
+|   `-- static/
+|       |-- styles.css
+|       `-- app.js
+|
+|-- tests/
+|   |-- test_app.py
+|   |-- test_people.py
+|   |-- test_money.py
+|   |-- test_splits.py
+|   |-- test_percentages.py
+|   |-- test_expenses.py
+|   |-- test_balances.py
+|   |-- test_settlement.py
+|   |-- test_session_management.py
+|   |-- test_frontend.py
+|   `-- test_integration.py
+|
+|-- .gitignore
+|-- PROMPTS.md
+|-- README.md
+|-- requirements.txt
+|-- run.py
+|-- start_app.bat
+`-- documentation.txt
+
+app/main.py is the web entry point. app/models.py contains Pydantic models and
+enums. app/repository.py contains the two in-memory repositories. app/services
+contains the independently testable business rules. app/templates and
+app/static form the browser client. tests contains unit, API, integration, and
+smoke coverage. run.py and start_app.bat provide convenient launch paths.
+requirements.txt declares the runtime and test dependencies. README.md is the
+repository overview, PROMPTS.md records AI prompt history, and this file is the
+expanded technical report.
+
+
+================================================================
+9. DATA MODEL
+================================================================
+
+9.1 Person
+----------
+
+Person contains:
+
+- id: unique positive integer for the current session;
+- name: trimmed display name.
+
+PersonCreate contains the submitted name before repository normalization.
+
+9.2 Expense
+-----------
+
+ExpenseRequest accepts:
+
+- description: text, defaulting to an empty string;
+- amount: decimal text rather than a float;
+- payer_id: existing person ID;
+- split_type: equal or percentage;
+- participant_ids: list used only for Equal Split; and
+- percentages: person-ID-to-string mapping used only for Percentage Split.
+
+The stored Expense contains:
+
+- id;
+- trimmed description;
+- amount_cents;
+- payer_id;
+- participant_ids in deterministic input order;
+- split_type;
+- shares, mapping participant IDs to integer cents; and
+- percentages, stored as normalized decimal strings for Percentage Split or
+  None for Equal Split.
+
+ExpenseDetails represents validated expense data before repository ID
+assignment.
+
+9.3 Balance and Settlement Responses
+------------------------------------
+
+BalanceResponse contains person ID, name, signed balance_cents, a formatted
+balance string, and status: receive, owes, or settled.
+
+SettlementTransaction contains from_person_id, to_person_id, and amount_cents.
+SettlementResponse adds the two names and a formatted LKR amount.
+
+9.4 Identifier Lifecycle
+------------------------
+
+People and expenses use separate integer counters beginning at 1. Normal
+record deletion does not decrement a counter or reuse an ID within the session.
+Updating an expense preserves its ID. Start New Session resets both repositories
+and therefore both counters to 1.
+
+
+================================================================
+10. APPLICATION WORKFLOW
+================================================================
+
+Add People
+    |
+    v
+Create Expenses
+    |
+    v
+Calculate Exact Shares
+    |
+    v
+Calculate Running Balances
+    |
+    v
+Calculate Minimum-Transaction Settlement
+
+The user first creates the people available to be payer or participant. When an
+expense is submitted, the backend validates references and financial input,
+calculates shares, verifies that shares equal the amount, and stores the result.
+Balance requests replay all current expenses. Settlement requests derive those
+balances and then solve them.
+
+Changing or deleting an expense does not require manually patching totals.
+Because balances and settlements are derived on request, they immediately
+reflect the current collection of expenses. This applies to amount, payer,
+participant, percentage, and split-mode changes.
+
+
+================================================================
+11. PEOPLE MANAGEMENT
+================================================================
+
+Names are cleaned with strip(), so surrounding whitespace is removed. A blank
+or whitespace-only result is rejected. Duplicate detection uses casefold(), a
+case-insensitive normalization appropriate for comparing text names. Therefore:
+
+Alice
+alice
+ ALICE
+
+are treated as duplicates in one session.
+
+Each accepted person receives the next unique integer ID. People remain listed
+in insertion order. An unused person can be removed. A person used as an
+expense payer or participant cannot be removed; the API returns HTTP 409 and
+instructs the user to edit or delete the relevant expenses first. This prevents
+dangling references and avoids silently rewriting historical records. Once all
+referencing expenses have been changed or deleted, the person can be removed.
+
+
+================================================================
+12. EXPENSE MANAGEMENT
+================================================================
+
+To create an expense, the user supplies a description, positive monetary
+amount, existing payer, and one complete split configuration. Description is
+trimmed and may be empty. The payer and participants are independent, so a
+person may pay entirely on behalf of others without receiving a share.
+
+For Equal Split, participant_ids must be provided and percentages must be
+absent. For Percentage Split, percentages must be provided and participant_ids
+must be absent. Unknown people and contradictory or missing split fields are
+rejected.
+
+Expenses are returned in insertion order and can be retrieved individually.
+Editing performs a full validated replacement while retaining the existing ID.
+Shares and stored percentage data are recalculated, so switching Equal to
+Percentage or Percentage to Equal cannot retain stale configuration. Deleting
+an expense removes it from all future balance and settlement calculations.
+Deleted expense IDs are not reused during the session.
+
+
+================================================================
+13. MONEY REPRESENTATION AND VALIDATION
+================================================================
+
+13.1 Canonical Representation
+-----------------------------
+
+Binary floating-point values are not used as the canonical representation of
+money. Submitted text is parsed with Decimal and converted to integer cents.
+All expense amounts, shares, balances, and settlement payments remain integer
+cents.
+
+Examples:
+
+Rs. 100.00      -> 10000 cents
+Rs. 12,000.00   -> 1200000 cents
+Rs. 3,333.33    -> 333333 cents
+
+The API money parser expects ordinary decimal text without thousands separators,
+so a submitted value is written as 12000.00, not 12,000.00. Commas appear in
+formatted output. Integer cents avoid results such as 0.1 + 0.2 not being
+represented exactly in binary floating point.
+
+13.2 Validation
+---------------
+
+parse_money_to_cents requires a string, trims it, and rejects:
+
+- empty text;
+- non-decimal strings;
+- NaN and infinity;
+- zero;
+- negative values; and
+- values with more than two decimal places.
+
+Valid inputs such as 12000 or 12000.0 become exact cents. The browser also
+normalizes valid display input on blur, for example 12000 -> 12000.00, but the
+backend remains authoritative.
+
+13.3 Formatting
+---------------
+
+format_cents uses integer divmod and emits a signed, comma-grouped value with
+exactly two decimal places:
+
+Rs. 12,000.00
+-Rs. 3,333.33
+
+The formatter itself accepts signed integer cents because balances may be
+negative, while new expense amounts must be positive.
+
+
+================================================================
+14. EQUAL SPLIT ALGORITHM
+================================================================
+
+The Equal Split service validates a positive integer-cent total, at least one
+participant, integer IDs, and no duplicate participant IDs. It then calculates:
+
+base_share, remainder = divmod(total_cents, participant_count)
+
+Every participant first receives base_share cents. The first remainder people
+in submitted participant order receive one additional cent. The difference
+between the largest and smallest shares is therefore never greater than one
+cent, and the result is deterministic.
+
+Example:
+
+Rs. 100.00
+3 participants
+
+10000 cents divmod 3 gives a base of 3333 cents and remainder 1.
+
+Person 1 = Rs. 33.34
+Person 2 = Rs. 33.33
+Person 3 = Rs. 33.33
+
+33.34 + 33.33 + 33.33 = 100.00
+
+The critical invariant is:
+
+sum(shares) = original expense amount
+
+No cent is discarded and no cent is invented.
+
+
+================================================================
+15. PERCENTAGE SPLIT ALGORITHM
+================================================================
+
+15.1 Exact Percentage Rules
+---------------------------
+
+Percentage text is parsed directly with Python Decimal. Each selected value
+must be finite, greater than zero, no greater than 100, and have no more than
+two decimal places. At least one participant is required and the values must
+total exactly:
+
+100.00%
+
+There is no floating-point tolerance because Decimal represents these submitted
+base-10 values exactly.
+
+15.2 Largest Remainder Method
+-----------------------------
+
+Percentage calculations can yield fractional cents. The implementation:
+
+1. calculates each exact share as total_cents * percentage / 100;
+2. floors every exact value to an integer cent;
+3. calculates how many cents remain unallocated;
+4. ranks fractional remainders from largest to smallest;
+5. awards one remaining cent to each highest-ranked entry; and
+6. uses participant input order to break equal-remainder ties.
+
+For example, a percentage configuration may be:
+
+Alice = 33.33%
+Bob   = 33.33%
+Dave  = 33.34%
+
+For Rs. 10,000.00 these happen to resolve exactly to Rs. 3,333.00,
+Rs. 3,333.00, and Rs. 3,334.00. For smaller or differently sized amounts, the
+Largest Remainder Method distributes fractional-cent leftovers while preserving
+the exact total. Even a one-cent 50/50 expense is deterministic: the first
+participant receives the cent and the second receives zero cents.
+
+The interface displays Total plus either Remaining or Over by as immediate
+guidance. JavaScript calculates those indicators in percentage hundredths, but
+the backend Decimal checks are the authoritative acceptance rule.
+
+
+================================================================
+16. RUNNING BALANCE CALCULATION
+================================================================
+
+For every known person, the balance begins at zero. Each expense applies:
+
+balances[payer] += expense amount
+
+for every participant:
+    balances[participant] -= participant share
+
+Interpretation:
+
+Positive = should receive
+Negative = owes
+Zero     = settled
+
+The payer is credited for the whole amount they advanced. Each beneficiary is
+debited only for their calculated share. If the payer is also a participant,
+both operations apply and naturally produce the payer's net contribution.
+
+The invariant is:
+
+sum(all balances) = 0
+
+Before processing an expense, the service verifies its shares match its amount
+and that all referenced people exist. It also verifies the final zero sum and
+raises BalanceIntegrityError for corrupted data.
+
+Balances are derived from expenses rather than stored independently. This
+prevents stale-state errors after an edit, deletion, payer change, participant
+change, or switch between split types. Expenses are the source of truth.
+
+
+================================================================
+17. MINIMUM-TRANSACTION SETTLEMENT ALGORITHM
+================================================================
+
+17.1 Why Exact Search Is Used
+-----------------------------
+
+A simple greedy algorithm that repeatedly pairs a large debtor with a large
+creditor produces a valid settlement, but it does not always guarantee the
+globally minimum number of transactions. The implementation therefore uses
+memoized depth-first search (DFS) / backtracking with pruning.
+
+17.2 Search Process
+-------------------
+
+Conceptually, the solver:
+
+1. verifies every balance is an integer number of cents and the total is zero;
+2. removes zero balances;
+3. selects the first unsettled person;
+4. tries that person against every opposite-sign balance;
+5. transfers the smaller absolute balance, settling at least one person;
+6. removes newly settled entries and recursively solves the remainder;
+7. compares candidate plans by transaction count;
+8. selects the shortest plan; and
+9. uses sorted transaction tuples for deterministic lexicographic tie-breaking.
+
+An lru_cache memoizes balance states so an already-solved subproblem is not
+searched repeatedly. Exact cancellation candidates are tried first. Opposite-
+sign matching and settlement of at least one balance reduce the search space.
+All amounts remain integer cents.
+
+One valid three-payment example is:
+
+Bob  -> Carol : Rs. 7,000.00
+Dave -> Alice : Rs. 3,334.00
+Bob  -> Alice : Rs. 2,333.00
+
+Equivalent optimal plans may exist. The implementation's deterministic ordering
+chooses one consistently. Applying every transaction adds the payment to the
+debtor's negative balance and subtracts it from the creditor's positive balance;
+every final balance becomes zero.
+
+17.3 Complexity
+---------------
+
+The exact search has combinatorial worst-case behavior. Memoization and pruning
+make it appropriate for ordinary small expense-sharing groups, which is the
+intended application scale.
+
+
+================================================================
+18. USER INTERFACE
+================================================================
+
+The browser interface includes a header with Start New Session, a People
+section, an Add Expense/Edit Expense form, an Expenses display, running
+Balances, and Settle Up results.
+
+The People area adds and lists group members and offers removal for eligible
+records. The expense form contains description, amount, payer selection, the
+Equal/Percentage switch, separate participant controls, Select All, and the
+percentage summary. Percentage rows provide an input for each selected person.
+
+Saved expense entries show the payer, mode, participants, percentages where
+applicable, and exact shares. Edit loads the record back into the form. Save
+Changes submits a PUT request, Cancel leaves the saved record untouched, and
+Delete asks for confirmation before removal.
+
+Balances show formatted signed positions and status. Settle Up presents named
+payment instructions. Start New Session asks for destructive-action confirmation
+before clearing state. The CSS includes responsive behavior for smaller screens.
+
+JavaScript owns temporary form and rendering state and sends fetch requests to
+the API. It provides convenience validation and formatting, but cannot override
+backend money, split, balance, or settlement decisions.
+
+[OPTIONAL SCREENSHOT: Main application interface]
+
+[OPTIONAL SCREENSHOT: Equal Split mode]
+
+[OPTIONAL SCREENSHOT: Percentage Split mode showing Total 100.00%
+and Remaining 0.00%]
+
+[OPTIONAL SCREENSHOT: Running balances]
+
+[OPTIONAL SCREENSHOT: Settle Up result]
+
+
+================================================================
+19. USER GUIDE
+================================================================
+
+1. Start the application. Run python run.py and open
+   http://127.0.0.1:8000 if the browser does not open automatically.
+
+2. Add people. Enter each group member's name. Correct accidental surrounding
+   spaces before or after the name are removed automatically by the backend.
+
+3. Enter an expense. Supply a description, the amount in LKR, and the person
+   who paid. The description may be empty, but a positive valid amount and an
+   existing payer are required.
+
+4. Choose Equal or Percentage. Equal shares the amount evenly. Percentage
+   accepts a specific positive percentage for each selected participant.
+
+5. Select participants. Use individual checkboxes or Select All. The payer is
+   not automatically included; select the payer only if that person also owes a
+   share.
+
+6. For Percentage mode, enter values totaling exactly 100%. Watch Total and
+   Remaining/Over by for guidance.
+
+7. Add the expense. The backend validates it, calculates exact shares, and the
+   UI refreshes the expense list, balances, and settlement.
+
+8. Review Expenses. Confirm the payer, participants, mode, and shares.
+
+9. Review Balances. To receive is positive, Owes is negative, and Settled is
+   zero.
+
+10. Review Settle Up. Follow each displayed payment instruction to clear the
+    group's balances. The app provides instructions only and transfers no money.
+
+11. Edit or delete when needed. Edit recalculates the complete record. Delete
+    removes it after confirmation. Both operations update derived results.
+
+12. Remove unused people if needed. Referenced people must first be removed
+    from or detached from all relevant expenses.
+
+13. Select Start New Session to clear all current data and restart IDs. Confirm
+    only when the existing in-memory session is no longer needed.
+
+
+================================================================
+20. API DESIGN
+================================================================
+
+20.1 Routes
+-----------
+
+METHOD   ENDPOINT                    PURPOSE
+------   -------------------------   ----------------------------------------
+GET      /                           Serve the Jinja browser interface
+GET      /api/health                 Return {"status": "ok"}
+POST     /api/people                 Add a person (201)
+GET      /api/people                 List people in insertion order
+DELETE   /api/people/{person_id}     Remove an unused person (204)
+DELETE   /api/session                Clear session and reset IDs (204)
+POST     /api/expenses               Create and calculate an expense (201)
+GET      /api/expenses               List expenses in insertion order
+GET      /api/expenses/{expense_id}  Retrieve one expense
+PUT      /api/expenses/{expense_id}  Fully replace/recalculate one expense
+DELETE   /api/expenses/{expense_id}  Delete one expense (204)
+GET      /api/balances               Get current derived balances
+GET      /api/settlements            Get an optimal derived settlement plan
+
+FastAPI additionally serves mounted files under /static. This is static asset
+delivery, not a business API route.
+
+20.2 Request and Response Principles
+------------------------------------
+
+JSON requests use IDs for references and decimal strings for money and
+percentages. Pydantic models define the accepted structure and enums. Stored
+expenses expose integer-cent shares, enabling exact client display. Balance and
+settlement endpoints return IDs, names, cents, and formatted LKR strings so the
+client does not have to reproduce authoritative formatting.
+
+Expected domain failures become HTTP 400 for invalid names/expense content,
+HTTP 404 for missing people or expenses, and HTTP 409 when a person is still
+referenced. Successful deletes and reset return HTTP 204.
+
+
+================================================================
+21. TESTING STRATEGY
+================================================================
+
+Testing was treated as a core implementation activity rather than a final
+manual check. The suite combines:
+
+- unit tests for pure money, split, balance, and settlement functions;
+- API tests using FastAPI TestClient;
+- integration tests spanning multiple routes and recalculations;
+- regression tests for cases where greedy settlement is not optimal;
+- financial invariant tests over many values;
+- repository/session isolation fixtures; and
+- frontend smoke tests for HTML, CSS, JavaScript, and required controls.
+
+Tests check both successful behavior and invalid input. Repository reset
+fixtures make cases independent. The primary command is:
+
+python -m pytest -v
+
+Important invariants are tested directly:
+
+sum(expense shares) == expense amount
+sum(balances) == 0
+after applying settlement every balance == 0
+
+This protects against lost cents, invented cents, stale state, and incomplete
+settlements.
+
+
+================================================================
+22. TEST FILES AND THEIR PURPOSE
+================================================================
+
+test_app.py
+    Confirms the root page responds successfully and the health endpoint
+    returns the expected status.
+
+test_people.py
+    Covers creation, insertion ordering, whitespace trimming, blank-name
+    rejection, case-insensitive duplicate prevention, unique IDs, and test
+    isolation.
+
+test_money.py
+    Covers valid decimal parsing, zero and negative rejection, malformed and
+    over-precision input, and exact signed LKR display formatting.
+
+test_splits.py
+    Covers Equal Split for one or many people, even and uneven totals,
+    deterministic participant-order remainder allocation, invalid inputs, and
+    broad rounding invariants.
+
+test_percentages.py
+    Covers Decimal percentage parsing, finite/positive/precision constraints,
+    exact 100% validation, single and multi-person splits, one-cent behavior,
+    Largest Remainder allocation, deterministic ties, and repeated invariant
+    checks.
+
+test_expenses.py
+    Covers Equal and Percentage expense creation, payer outside participants,
+    unknown references, duplicate participants, invalid money and split type,
+    contradictory fields, list/get behavior, all CRUD operations, ID
+    preservation/progression, recalculation, and mode switching.
+
+test_balances.py
+    Covers empty and zero-balance groups, simple and accumulated expenses,
+    payer-outside-participant behavior, response names/format/status, the
+    assignment scenario, edit/delete recalculation, zero-sum invariants, and
+    corrupted-expense detection.
+
+test_settlement.py
+    Covers empty and simple settlements, multiple debtors/creditors, input
+    immutability and validation, deterministic lexicographic ties, an optimality
+    regression that beats greedy, the assignment scenario's three-transaction
+    minimum, API formatting, and recalculation after changes.
+
+test_session_management.py
+    Covers removal of unused people, 404 for missing people, 409 protection for
+    payer and participant references, non-reused deletion IDs, removal after
+    deleting references, complete session reset, and counter restart.
+
+test_frontend.py
+    Confirms HTML content and essential controls, and verifies that CSS and
+    JavaScript static assets are served.
+
+test_integration.py
+    Exercises complete API workflows, the assessment scenario, editing payer
+    and amount, switching split modes without stale fields, deletion,
+    people-reference rules, fresh sessions, rounding edges, representative
+    invalid requests, end-to-end financial invariants, and frontend/static HTTP
+    smoke behavior.
+
+
+================================================================
+23. END-TO-END ASSESSMENT SCENARIO
+================================================================
+
+23.1 Input
+----------
+
+People:
+
+Alice
+Bob
+Carol
+Dave
+
+Expense 1:
+
+Alice pays Rs. 12,000.00
+Equal participants: Alice, Bob, Carol, Dave
+
+Each share is Rs. 3,000.00.
+
+Expense 2:
+
+Carol pays Rs. 10,000.00
+Percentage participants:
+Alice 33.33%
+Bob   33.33%
+Dave  33.34%
+
+Shares are Rs. 3,333.00, Rs. 3,333.00, and Rs. 3,334.00. Carol is intentionally
+the payer but is not a participant.
+
+Expense 3:
+
+Dave pays Rs. 6,000.00
+Equal participants: Dave, Bob
+
+Each share is Rs. 3,000.00.
+
+23.2 Final Balances
+-------------------
+
+Alice   + Rs. 5,667.00
+Bob     - Rs. 9,333.00
+Carol   + Rs. 7,000.00
+Dave    - Rs. 3,334.00
+-----------------------
+Total     Rs. 0.00
+
+Alice paid 12,000 and owes shares of 3,000 and 3,333, leaving +5,667. Bob owes
+3,000 + 3,333 + 3,000 = 9,333. Carol paid 10,000 while owing no participant
+share on that expense and owes 3,000 from Expense 1, leaving +7,000. Dave owes
+3,000 + 3,334 + 3,000 but paid 6,000, leaving -3,334.
+
+23.3 Settlement Result
+----------------------
+
+The exact solver proves that three transactions are sufficient and minimal for
+these non-zero balances. One valid plan is:
+
+Bob  -> Carol : Rs. 7,000.00
+Dave -> Alice : Rs. 3,334.00
+Bob  -> Alice : Rs. 2,333.00
+
+The deterministic implementation may choose this or an equivalent optimal plan
+according to its lexicographic ordering. The correctness criteria are that the
+plan has three transactions and applying all of them makes every balance zero.
+
+
+================================================================
+24. ERROR HANDLING AND VALIDATION
+================================================================
+
+The application validates at model, service, repository, and integrity levels.
+Important cases include:
+
+- blank or whitespace-only names: rejected;
+- duplicate names after trimming/case-insensitive comparison: rejected;
+- invalid, empty, non-finite, zero, or negative money: rejected;
+- money with more than two decimal places: rejected;
+- unknown payer: rejected;
+- unknown participant: rejected;
+- duplicate Equal participant IDs: rejected by split validation;
+- unsupported split type: rejected by Pydantic enum validation;
+- missing or contradictory split configuration: rejected;
+- Percentage totals other than exactly 100: rejected;
+- zero, negative, above-100, non-finite, or over-precision percentages:
+  rejected;
+- deleting a referenced person: rejected with HTTP 409;
+- requesting, editing, or deleting a missing expense: HTTP 404;
+- deleting a missing person: HTTP 404;
+- corrupted expense shares or references: BalanceIntegrityError; and
+- invalid settlement state, non-integer balances, or a non-zero total:
+  InvalidSettlementBalancesError.
+
+The frontend catches failed API responses and exposes their detail in a
+user-friendly error area. Confirmation dialogs reduce accidental destructive
+actions. Client-side checks improve responsiveness, but backend validation is
+always final.
+
+
+================================================================
+25. SESSION MANAGEMENT
+================================================================
+
+The application is deliberately single-session. DELETE /api/session powers the
+Start New Session control. It resets ExpenseRepository first and then
+PeopleRepository.
+
+This clears stored:
+
+- people; and
+- expenses.
+
+It consequently clears derived:
+
+- balances; and
+- settlements.
+
+The frontend also resets temporary editing/form state after a successful reset.
+Both repository ID counters restart at 1. In contrast, normal individual
+deletion never reuses an ID within the active session. Because all persistence
+is in process memory, stopping or restarting the server also clears the current
+data.
+
+
+================================================================
+26. ASSUMPTIONS MADE AND WHY
+================================================================
+
+26.1 Single Session
+-------------------
+
+Assumption: one active local group uses the process at a time.
+Why: the brief does not require accounts and emphasizes a single-session tool,
+allowing attention to remain on expense correctness.
+
+26.2 In-Memory Persistence
+--------------------------
+
+Assumption: records only need to last for the running process.
+Why: in-memory storage is appropriate to the assignment scope. Repository
+separation provides a future replacement point for durable storage.
+
+26.3 Single Currency
+--------------------
+
+Assumption: every value is LKR.
+Why: a single currency avoids undefined exchange-rate timing and rounding rules
+and directly matches the application requirement.
+
+26.4 Percentage Rather Than Exact Amount
+----------------------------------------
+
+Assumption: Percentage is the second mode alongside Equal.
+Why: the project selected the permitted proportional allocation option and
+implemented its exact rounding requirements.
+
+26.5 Exact 100% Validation
+--------------------------
+
+Assumption: selected percentages must be positive and total exactly 100%.
+Why: this prevents under-allocation and over-allocation and preserves zero-sum
+accounting without arbitrary tolerance.
+
+26.6 Payer May Be Outside Participants
+---------------------------------------
+
+Assumption: payment and benefit are independent roles.
+Why: one person can advance money entirely for other people. Requiring payer
+participation would incorrectly exclude this common scenario.
+
+26.7 Referenced People Cannot Be Deleted
+----------------------------------------
+
+Assumption: historical references must remain valid.
+Why: blocking deletion avoids dangling IDs and silent mutation of expenses.
+
+26.8 Deterministic Remainder Allocation
+---------------------------------------
+
+Assumption: participant input order breaks rounding ties.
+Why: repeatable output is explainable, testable, and stable across requests.
+
+26.9 Small Normal Group Sizes
+-----------------------------
+
+Assumption: the exact settlement solver handles ordinary friend, household, or
+trip groups rather than very large financial networks.
+Why: DFS/backtracking guarantees minimum transactions but has combinatorial
+worst-case behavior; correctness is prioritized at the intended scale.
+
+
+================================================================
+27. IMPORTANT ENGINEERING DECISIONS
+================================================================
+
+Integer cents instead of float
+    Prevents binary representation errors and makes conservation of money an
+    exact integer invariant.
+
+Decimal percentages
+    Preserves submitted base-10 values and permits an exact 100 comparison.
+
+Largest Remainder Method
+    Converts fractional-cent proportional results into integer cents while
+    keeping the total exact and minimizing allocation distortion.
+
+Expenses as source of truth
+    Keeps one authoritative set of financial facts.
+
+Derived balances
+    Eliminates synchronization work and stale totals after CRUD operations.
+
+Derived settlements
+    Guarantees instructions correspond to the latest balances.
+
+DFS/backtracking instead of greedy
+    Guarantees the globally minimum transaction count for the searched state.
+
+Deterministic tie-breaking
+    Produces repeatable results when several optimal settlements exist.
+
+Backend-authoritative calculations
+    Prevents browser state or display arithmetic from changing canonical data.
+
+Layered architecture
+    Separates HTTP, orchestration, algorithms, storage, and presentation.
+
+Automated testing
+    Makes rounding, zero-sum, optimality, CRUD, and regression claims
+    executable and repeatable.
+
+
+================================================================
+28. CHALLENGES AND SOLUTIONS
+================================================================
+
+28.1 Equal-Split Rounding
+-------------------------
+
+Challenge: division can leave cents that cannot be split evenly.
+Solution: integer divmod assigns a base share and distributes remainder cents
+in participant order, preserving the amount exactly.
+
+28.2 Fractional Cents in Percentage Split
+------------------------------------------
+
+Challenge: exact percentages can produce fractions of a cent.
+Solution: Decimal calculates exact theoretical shares; floor allocation plus
+Largest Remainder distribution returns deterministic integer cents.
+
+28.3 Keeping Totals at Exactly Zero
+------------------------------------
+
+Challenge: a missing or extra cent can invalidate all later balances.
+Solution: every expense verifies sum(shares) == amount, and the balance service
+verifies sum(balances) == 0 before returning results.
+
+28.4 Editing and Deleting Without Stale Balances
+------------------------------------------------
+
+Challenge: mutable cached totals are easy to update incompletely.
+Solution: stored expenses are authoritative; balances and settlement are
+re-derived on request.
+
+28.5 Minimum-Transaction Settlement
+------------------------------------
+
+Challenge: a valid greedy result is not necessarily globally minimal.
+Solution: memoized DFS/backtracking explores opposite-sign pairings, compares
+plan lengths, and deterministically selects the best plan.
+
+28.6 Safe People Deletion
+--------------------------
+
+Challenge: deleting a referenced person would corrupt expense history.
+Solution: the route checks every expense for payer or participant references
+and returns HTTP 409 until those references are removed.
+
+28.7 Frontend/Backend Synchronization
+-------------------------------------
+
+Challenge: edits, deletes, mode switches, and reset can leave stale UI state.
+Solution: JavaScript rebuilds request data for the active mode and refreshes
+server-derived collections after mutations. The backend rejects contradictory
+fields and fully recalculates records.
+
+
+================================================================
+29. DEVELOPMENT AND GIT WORKFLOW
+================================================================
+
+The Git history shows incremental development through these major stages:
+
+1. initial project and FastAPI setup;
+2. people management;
+3. exact money handling and Equal Split;
+4. Percentage Split;
+5. expense creation, editing, and deletion;
+6. running group balances;
+7. minimum-transaction settlement;
+8. frontend design and UI testing;
+9. end-to-end scenario tests; and
+10. documentation and startup workflow.
+
+Each logical capability was implemented and tested as a focused step before
+the next layer was added. This approach made defects easier to localize and
+produced a Git history that communicates the architecture's evolution. GitHub
+provides the shared repository and submission context. This documentation task
+does not create a commit.
+
+
+================================================================
+30. AI-ASSISTED DEVELOPMENT
+================================================================
+
+AI assistance was permitted and used for planning, implementation support,
+debugging, test design, review, and documentation. PROMPTS.md contains the
+project prompt history.
+
+AI output was not treated as proof of correctness. Generated or assisted code
+was checked against the requirements, exercised through automated tests, and
+manually reviewed through the application workflow. Financial invariants,
+specific regression cases, API behavior, and frontend smoke checks provide
+repeatable evidence for the final implementation.
+
+
+================================================================
+31. KNOWN LIMITATIONS
+================================================================
+
+- There is no persistent database.
+- All state is lost after the server process restarts.
+- There is one shared session and no authentication or accounts.
+- The application calculates payment instructions but performs no real payment
+  processing.
+- The exact settlement search has combinatorial worst-case behavior and is
+  intended for relatively small groups.
+- Percentage Split permits only positive selected percentages; a zero-percent
+  person should simply remain unselected.
+- The project has HTTP/static frontend smoke tests but no full Playwright or
+  Selenium browser automation suite.
+- There is no multi-currency conversion, expense categorization, export, or
+  deployed cloud environment in the repository.
+
+These are boundaries of the current project scope. The core required workflows
+remain complete within that scope.
+
+
+================================================================
+32. WHAT I WOULD BUILD NEXT WITH MORE TIME
+================================================================
+
+1. Persistent storage. Add SQLite for a simple local deployment or PostgreSQL/
+   Firestore for durable shared data, behind the existing repository boundary.
+
+2. Shareable sessions. Give each group a session ID and private URL so multiple
+   groups can coexist and return later.
+
+3. Authentication and authorization. Add optional accounts and ensure only
+   permitted users can view or modify a saved session.
+
+4. Deployment. Package the service, configure environment-specific settings,
+   add production monitoring, and deploy with persistent storage.
+
+5. Export. Provide CSV for data analysis and a well-formatted PDF summary for
+   sharing or archiving.
+
+6. Expense categories. Add Food, Accommodation, Transport, Activities, and
+   custom categories with filtering and summaries.
+
+7. Browser automation. Add Playwright or Selenium coverage for complete form,
+   edit, delete, reset, keyboard, and responsive workflows.
+
+8. Accessibility and mobile polish. Perform a deeper screen-reader, contrast,
+   focus-order, touch-target, and small-screen review.
+
+9. Very-large-group settlement. Evaluate stronger branch bounds, component
+   decomposition, mixed-integer optimization, or a documented scalable
+   near-optimal fallback.
+
+
+================================================================
+33. ANYTHING LEFT INCOMPLETE AND PRIORITIZATION
+================================================================
+
+All core requirements from the assignment were implemented.
+
+People management, expense CRUD, Equal Split, Percentage Split, exact rounding,
+derived running balances, optimal settlement, session reset, a usable browser
+interface, startup helpers, and automated tests are present.
+
+Persistent storage, authentication, actual transfers, production hosting,
+exports, categories, and full browser automation were intentionally omitted
+because they are outside the core single-session assessment. They are extension
+opportunities rather than hidden claims of current functionality.
+
+Implementation priority was:
+
+1. Financial correctness
+2. Rounding correctness
+3. Settlement correctness
+4. CRUD and integration
+5. Automated testing
+6. Usable UI
+7. Infrastructure and visual polish
+
+This order aligns with the brief: an attractive or deployed application would
+not compensate for incorrect debts, missing cents, stale state, or a
+non-minimal settlement.
+
+
+================================================================
+34. HOW TO INSTALL AND RUN THE APPLICATION
+================================================================
+
+34.1 Prerequisites
+------------------
+
+- Python 3.11 or later
+- Git
+- A modern web browser
+
+Check the tools:
+
+python --version
+git --version
+
+34.2 Clone the Repository
+-------------------------
+
+The current README identifies the repository as:
+
+git clone https://github.com/indeepa-05/Expense-Splitter.git
+cd Expense-Splitter
+
+If working from an already downloaded submission, open a terminal in its root
+folder instead.
+
+34.3 Create and Activate a Virtual Environment
+-----------------------------------------------
+
+Create it:
+
+python -m venv .venv
+
+Activate in Windows PowerShell:
+
+.\.venv\Scripts\Activate.ps1
+
+Activate in Windows Command Prompt:
+
+.venv\Scripts\activate.bat
+
+34.4 Install Dependencies
+-------------------------
+
+python -m pip install -r requirements.txt
+
+requirements.txt currently declares FastAPI, Pydantic, Uvicorn, pytest, HTTPX,
+and Jinja2.
+
+34.5 Recommended Start
+----------------------
+
+python run.py
+
+run.py starts the imported FastAPI application with Uvicorn at:
+
+http://127.0.0.1:8000
+
+It schedules an attempt to open that address in the default browser after one
+second. If no browser opens, navigate to the address manually.
+
+34.6 Windows Batch Start
+------------------------
+
+After .venv exists and requirements are installed, double-click:
+
+start_app.bat
+
+The batch file changes to its own project directory, checks for
+.venv\Scripts\python.exe, gives setup guidance if it is missing, and otherwise
+runs run.py with that interpreter.
+
+34.7 Development Fallback
+-------------------------
+
+python -m uvicorn app.main:app --reload
+
+Then open http://127.0.0.1:8000. The reload option restarts the development
+server when source files change.
+
+34.8 Stop the Application
+-------------------------
+
+Press Ctrl + C in the terminal running the server.
+
+
+================================================================
+35. HOW TO RUN THE TESTS
+================================================================
+
+35.1 Complete Suite
+-------------------
+
+python -m pytest -v
+
+This collects every test and prints each test name and result. It is the best
+command before submission or after a cross-cutting change.
+
+35.2 One Test File
+------------------
+
+python -m pytest tests/test_money.py -v
+
+Running one module gives fast feedback while working on a specific feature.
+
+35.3 One Exact Test
+-------------------
+
+The following real test function exists in the repository:
+
+python -m pytest tests/test_settlement.py::test_optimal_settlement_beats_greedy_counterexample -v
+
+An exact node ID is useful for reproducing or debugging a single regression
+without running unrelated tests.
+
+[OPTIONAL SCREENSHOT: pytest full test-suite result]
+
+
+================================================================
+36. CONCLUSION
+================================================================
+
+Expense Splitter successfully demonstrates exact financial arithmetic,
+deterministic rounding, Equal splitting, Percentage splitting, complete expense
+CRUD, safe people management, zero-sum running balances, globally minimum-
+transaction settlement, a usable web interface, and automated validation.
+
+The project gives special attention to properties that matter in financial
+software: integer-cent conservation, exact Decimal percentage rules, explicit
+invariants, authoritative backend calculations, and repeatable results. Its
+layered structure keeps presentation, HTTP concerns, business algorithms, and
+storage responsibilities clear. The test suite validates individual algorithms
+as well as full workflows and regression cases.
+
+Within its intended single-session, small-group scope, the application meets
+the core assignment requirements and provides a technically defensible result
+centered on correctness, testability, maintainability, and clear engineering
+decisions.
