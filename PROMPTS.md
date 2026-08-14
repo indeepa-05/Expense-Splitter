@@ -8,3 +8,7 @@ repository, add/list people API, person validation, and tests.
 Task 3 used AI assistance to implement integer-cent money handling, Decimal
 input parsing, money formatting, deterministic equal-split logic, and
 rounding-focused tests.
+
+Task 4 used AI assistance to implement Decimal percentage parsing, percentage
+validation, exact 100% total validation, largest-remainder allocation, and
+percentage rounding tests.
