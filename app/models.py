@@ -52,3 +52,21 @@ class Expense(ExpenseDetails):
     """A stored expense in the current application session."""
 
     id: int
+
+
+class BalanceStatus(str, Enum):
+    """A person's current net accounting position."""
+
+    RECEIVE = "receive"
+    OWES = "owes"
+    SETTLED = "settled"
+
+
+class BalanceResponse(BaseModel):
+    """Derived balance information returned by the API."""
+
+    person_id: int
+    name: str
+    balance_cents: int
+    balance: str
+    status: BalanceStatus

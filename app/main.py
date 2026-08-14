@@ -2,13 +2,15 @@
 
 from fastapi import FastAPI, HTTPException, status
 
-from app.models import Expense, ExpenseRequest, Person, PersonCreate
+from app.models import BalanceResponse, Expense, ExpenseRequest, Person, PersonCreate
 from app.repository import (
     DuplicatePersonError,
     ExpenseNotFoundError,
     InvalidPersonNameError,
+    expense_repository,
     people_repository,
 )
+from app.services.balances import build_balance_responses
 from app.services.expenses import (
     ExpenseValidationError,
     create_expense,
@@ -97,3 +99,12 @@ def remove_expense(expense_id: int) -> None:
         delete_expense(expense_id)
     except ExpenseNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/balances", response_model=list[BalanceResponse])
+def read_balances() -> list[BalanceResponse]:
+    """Return current net balances derived from all stored expenses."""
+    return build_balance_responses(
+        people_repository.list_all(),
+        expense_repository.list_all(),
+    )

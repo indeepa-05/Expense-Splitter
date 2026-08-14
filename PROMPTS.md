@@ -16,3 +16,7 @@ percentage rounding tests.
 Task 5 used AI assistance to implement the expense model, in-memory expense
 repository, create/list/edit/delete APIs, integration with the Equal and
 Percentage split services, and expense CRUD tests.
+
+Task 6 used AI assistance to implement the running balance service, zero-sum
+accounting, balance API, edit/delete recalculation tests, and the assignment
+sanity-check balance test.
