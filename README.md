@@ -2,6 +2,12 @@
 
 A minimal FastAPI foundation for an Expense Splitter application.
 
+## Implemented features
+
+- Add people with validated, unique names
+- List people in insertion order
+- In-memory storage for the current application session
+
 ## Run
 
 ```sh
@@ -12,5 +18,5 @@ uvicorn app.main:app --reload
 ## Test
 
 ```sh
-pytest -v
+python -m pytest -v
 ```
